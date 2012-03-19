@@ -174,14 +174,14 @@ static int button_pressed(void) {
   return active_button;
 }
 
-static void update_set_temperature(void) {
+static void display_set_temperature(void) {
   fake_lcd.setCursor(0, 1);
   fake_lcd.print(set_temperature, 0);
   fake_lcd.print("F");
   fake_lcd.show();
 }
 
-static void update_current_temperature(void) {
+static void display_current_temperature(void) {
   fake_lcd.setCursor(20 - 4, 1);
   if (current_temperature < 100) {
     fake_lcd.print(" ");
@@ -208,7 +208,7 @@ class DisplayNormal : public SilviaDisplay {
     virtual void show(void) {
       fake_lcd.clear();
       fake_lcd.print("Miss Silvia");
-      update_set_temperature();
+      display_set_temperature();
       periodic();  // this is just to show the current temperature
     }
     virtual void press(int pin, int down_ms) {
@@ -216,12 +216,12 @@ class DisplayNormal : public SilviaDisplay {
         if (pin == PIN_BUTTON_DOWN) {
           set_temperature -= 1;
           set_temperature = max(150, set_temperature);
-          update_set_temperature();
+          display_set_temperature();
         }
         else if (pin == PIN_BUTTON_UP) {
           set_temperature += 1;
           set_temperature = min(300, set_temperature);
-          update_set_temperature();
+          display_set_temperature();
         }
       }
     }
@@ -231,7 +231,7 @@ class DisplayNormal : public SilviaDisplay {
       Serial.println(" to EEPROM");
     }
     virtual void periodic(void) {
-      update_current_temperature();
+      display_current_temperature();
     }
 };
 
@@ -318,7 +318,7 @@ class DisplayPID : public SilviaDisplay {
       } else {
         fake_lcd.print(*_pid_letter);
       }
-      update_current_temperature();  // includes fake_lcd.show();
+      display_current_temperature();  // includes fake_lcd.show();
     }
 };
 
@@ -342,24 +342,24 @@ class DisplayUnits : public SilviaDisplay {
     }
 };
 
-static int active_display = 0;
+static int active_display = 0;  // Which display_panel[] is active.
 #define DISPLAY_COUNT 5
-static SilviaDisplay *display_index[DISPLAY_COUNT] = {
+static SilviaDisplay *display_panel[DISPLAY_COUNT] = {
   new DisplayNormal(),
   new DisplayPID((char *)"P", &Kp),
   new DisplayPID((char *)"I", &Ki),
   new DisplayPID((char *)"D", &Kd),
   new DisplayUnits() };
 
-// Each display mode gets called periodically so it can blink text or
-// update the temperature display, etc.
-static s_timer display_refresh_timer;  // also reset by change_display();
+// Each display mode gets called periodically so it can blink text
+// or update the temperature display.
+static s_timer display_refresh_timer;  // NOTE: Also reset by change_display();
 static int update_display(struct pt *pt) {
   PT_BEGIN(pt);
   while (1) {
     timer_set(&display_refresh_timer, 1000);
     PT_WAIT_UNTIL(pt, timer_expired(&display_refresh_timer));
-    display_index[active_display]->periodic();
+    display_panel[active_display]->periodic();
   }
   PT_END(pt);
 }
@@ -368,7 +368,7 @@ static int update_display(struct pt *pt) {
 static void change_display(int pin, int button_down_ms) {
   if (button_down_ms == 0 || button_down_ms > 400) {
     timer_set(&display_refresh_timer, 1000);
-    display_index[active_display]->hide();
+    display_panel[active_display]->hide();
     if (pin == PIN_BUTTON_LEFT) {
       active_display += 1;
       if (active_display >= DISPLAY_COUNT) {
@@ -381,7 +381,7 @@ static void change_display(int pin, int button_down_ms) {
         active_display = DISPLAY_COUNT - 1;
       }
     }
-    display_index[active_display]->show();
+    display_panel[active_display]->show();
   }
 }
 
@@ -405,7 +405,7 @@ static int button_watcher(struct pt *pt) {
             active_button == PIN_BUTTON_RIGHT) {
           change_display(active_button, button_down_ms);
         } else {
-          display_index[active_display]->press(active_button, button_down_ms);
+          display_panel[active_display]->press(active_button, button_down_ms);
         }
       }
       timer_set(&button_timer, 10);
@@ -416,7 +416,7 @@ static int button_watcher(struct pt *pt) {
         active_button == PIN_BUTTON_RIGHT) {
       // no release action
     } else {
-      display_index[active_display]->release(active_button);
+      display_panel[active_display]->release(active_button);
     }
     // debounce release
     timer_set(&button_timer, 10);
@@ -494,7 +494,7 @@ void setup() {
   pid_controller.SetMode(AUTOMATIC);
 
   fake_lcd.clear();
-  display_index[active_display]->show();
+  display_panel[active_display]->show();
 
   // reset microcontroller if 8 seconds elapse between calls to wdt_reset()
   wdt_enable(WDTO_8S);
