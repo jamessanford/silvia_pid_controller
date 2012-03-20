@@ -29,6 +29,9 @@
 #define PIN_BUTTON_LEFT 5
 #define PIN_BUTTON_RIGHT 6
 
+#define MIN_SET_TEMP 150
+#define MAX_SET_TEMP 300
+
 // Our protothreads.
 static struct pt pt_led;
 static struct pt pt_led2;
@@ -215,12 +218,12 @@ class DisplayNormal : public SilviaDisplay {
       if (down_ms == 0 || down_ms >= 400) {
         if (pin == PIN_BUTTON_DOWN) {
           set_temperature -= 1;
-          set_temperature = max(150, set_temperature);
+          set_temperature = max(MIN_SET_TEMP, set_temperature);
           display_set_temperature();
         }
         else if (pin == PIN_BUTTON_UP) {
           set_temperature += 1;
-          set_temperature = min(300, set_temperature);
+          set_temperature = min(MAX_SET_TEMP, set_temperature);
           display_set_temperature();
         }
       }
@@ -269,6 +272,9 @@ class DisplayPID : public SilviaDisplay {
 //                   "90  10.5   0"
 //                    012345678901
       fake_lcd.setCursor(0, 1);
+      if (Kp < 10) {
+        fake_lcd.print(" ");
+      }
       fake_lcd.print(Kp, 0);
       fake_lcd.setCursor(4, 1);
       if (Ki < 10) {
@@ -280,14 +286,15 @@ class DisplayPID : public SilviaDisplay {
         fake_lcd.print(" ");
       }
       fake_lcd.print(Kd, 0);
-      fake_lcd.show();
+      // redraw any currently-blank items, and the temperature.
+      _blink_state ^= 1;  // negated by periodic();
+      periodic();         // includes fake_lcd.show();
     }
     virtual void hide(void) {
     }
     virtual void show(void) {
-      _blink_state = 0;
+      _blink_state = 1;
       refresh_pid();
-      periodic();  // blink the character right away
     }
     virtual void press(int pin, int down_ms) {
       if (down_ms == 0 || down_ms >= 400) {
@@ -333,12 +340,14 @@ class DisplayUnits : public SilviaDisplay {
       fake_lcd.print("Fahrenheit");
 //      fake_lcd.print("Celcius");
       fake_lcd.show();
+      periodic();
     }
     virtual void press(int pin, int down_ms) {
     }
     virtual void release(int pin) {
     }
     virtual void periodic(void) {
+      display_current_temperature();
     }
 };
 
@@ -449,7 +458,7 @@ static int update_relay(struct pt *pt) {
   PT_END(pt);
 }
 
-// Fake boiler heater and tank that flucuates temperature.
+// Fake boiler heater and tank that fluctuates temperature.
 // This implementation is only reliable if we get called every millisecond.
 static int update_faketemp(struct pt *pt) {
   PT_BEGIN(pt);
