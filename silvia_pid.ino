@@ -17,6 +17,8 @@
 // AVR watchdog reset
 #include <avr/wdt.h>
 
+#include "FakeLCD.h"
+
 #define FLASH(__s) F(__s)
 
 // Change the relay in 1000ms increments, this value is just for testing.
@@ -60,6 +62,8 @@ PID pid_controller(&current_temperature,
                    &set_temperature,
                    Kp, Ki, Kd, DIRECT);
 
+FakeLCD fake_lcd(20, 2);
+
 // Timer from protothreads example.
 struct s_timer { unsigned long start, interval; };
 
@@ -71,64 +75,6 @@ static void timer_set(struct s_timer *t, int interval) {
 static int timer_expired(struct s_timer *t) {
   return (t->start + t->interval) <= millis();
 }
-
-// Fake LCD panel class.  Should be in a library.
-class FakeLCD : public Print {
-#define LCD_WIDTH_MAX 20
-#define LCD_HEIGHT_MAX 2
-  public:
-   FakeLCD(int w, int h) {
-     width = min(LCD_WIDTH_MAX, w);
-     height = min(LCD_HEIGHT_MAX, h);
-     cursorX = 0;
-     cursorY = 0;
-     clear();
-   }
-
-   void setCursor(int x, int y) {
-     cursorX = max(0, min(width - 1, x));
-     cursorY = max(0, min(height - 1, y));
-   }
-
-   void show(void) {
-     int x;
-     int y;
-     Serial.print(FLASH("* \r\n* "));
-     for (y = 0; y < height; y++) {
-       for (x = 0; x < width; x++) {
-         Serial.print((char)paneldata[(y * width) + x]);
-       }
-       Serial.print(FLASH(" *\r\n* "));
-     }
-     Serial.print(FLASH("\r\n\r\n"));
-   }
-
-   void clear(void) {
-     cursorX = 0;
-     cursorY = 0;
-     int offset;
-     for (offset = 0; offset < (width * height); offset++) {
-       paneldata[offset] = 32;  // space, 0x20
-     }
-   }
-
-   virtual size_t write(uint8_t value) {
-     paneldata[(cursorY * width) + cursorX] = value;
-     cursorX += 1;
-     cursorX = min(width - 1, cursorX);
-     // no wrapping to next line
-     return 1;
-   }
-
-  private:
-   int width;
-   int height;
-   int cursorX;
-   int cursorY;
-   uint8_t paneldata[LCD_WIDTH_MAX * LCD_HEIGHT_MAX];  // eww
-};
-
-FakeLCD fake_lcd(20, 2);
 
 void toggle_led(int pin_num) {
   boolean ledstate = digitalRead(pin_num);
