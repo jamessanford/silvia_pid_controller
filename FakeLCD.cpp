@@ -10,6 +10,8 @@
 
 #include "FakeLCD.h"
 
+#define FLASH(__s) F(__s)
+
 FakeLCD::FakeLCD(int w, int h) {
   width = min(LCD_WIDTH_MAX, w);
   height = min(LCD_HEIGHT_MAX, h);
@@ -26,14 +28,14 @@ void FakeLCD::setCursor(int x, int y) {
 void FakeLCD::show(void) {
   int x;
   int y;
-  Serial.print(F("* \r\n* "));
+  Serial.print(FLASH("* \r\n* "));
   for (y = 0; y < height; y++) {
     for (x = 0; x < width; x++) {
       Serial.print((char)paneldata[(y * width) + x]);
     }
-    Serial.print(F(" *\r\n* "));
+    Serial.print(FLASH(" *\r\n* "));
   }
-  Serial.print(F("\r\n\r\n"));
+  Serial.print(FLASH("\r\n\r\n"));
 }
 
 void FakeLCD::clear(void) {
