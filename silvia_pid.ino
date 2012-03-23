@@ -17,6 +17,8 @@
 // AVR watchdog reset
 #include <avr/wdt.h>
 
+#define FLASH(__s) F(__s)
+
 // Change the relay in 1000ms increments, this value is just for testing.
 #define RELAY_PERIOD 1000
 
@@ -91,14 +93,14 @@ class FakeLCD : public Print {
    void show(void) {
      int x;
      int y;
-     Serial.print(F("* \r\n* "));
+     Serial.print(FLASH("* \r\n* "));
      for (y = 0; y < height; y++) {
        for (x = 0; x < width; x++) {
          Serial.print((char)paneldata[(y * width) + x]);
        }
-       Serial.print(F(" *\r\n* "));
+       Serial.print(FLASH(" *\r\n* "));
      }
-     Serial.print(F("\r\n\r\n"));
+     Serial.print(FLASH("\r\n\r\n"));
    }
 
    void clear(void) {
@@ -210,7 +212,7 @@ class DisplayNormal : public SilviaDisplay {
     }
     virtual void show(void) {
       fake_lcd.clear();
-      fake_lcd.print(F("Miss Silvia"));
+      fake_lcd.print(FLASH("Miss Silvia"));
       display_set_temperature();
       periodic();  // this is just to show the current temperature
     }
@@ -229,9 +231,9 @@ class DisplayNormal : public SilviaDisplay {
       }
     }
     virtual void release(int pin) {
-      Serial.print(F("Write "));
+      Serial.print(FLASH("Write "));
       Serial.print(set_temperature);
-      Serial.println(F(" to EEPROM"));
+      Serial.println(FLASH(" to EEPROM"));
     }
     virtual void periodic(void) {
       display_current_temperature();
@@ -268,7 +270,7 @@ class DisplayPID : public SilviaDisplay {
     }
     void refresh_pid(void) {
       fake_lcd.clear();
-      fake_lcd.print(F(" P    I    D"));
+      fake_lcd.print(FLASH(" P    I    D"));
 //                   "90  10.5   0"
 //                    012345678901
       fake_lcd.setCursor(0, 1);
@@ -312,9 +314,9 @@ class DisplayPID : public SilviaDisplay {
     }
     virtual void release(int pin) {
       pid_controller.SetTunings(Kp, Ki, Kd);
-      Serial.print(F("Update EEPROM "));
+      Serial.print(FLASH("Update EEPROM "));
       Serial.print(*_pid_letter);
-      Serial.print(F(" = "));
+      Serial.print(FLASH(" = "));
       Serial.println(*_pid_variable);
     }
     virtual void periodic(void) {
@@ -335,9 +337,9 @@ class DisplayUnits : public SilviaDisplay {
     }
     virtual void show(void) {
       fake_lcd.clear();
-      fake_lcd.print(F("Display Units"));
+      fake_lcd.print(FLASH("Display Units"));
       fake_lcd.setCursor(2, 1);
-      fake_lcd.print(F("Fahrenheit"));
+      fake_lcd.print(FLASH("Fahrenheit"));
 //      fake_lcd.print("Celcius");
       fake_lcd.show();
       periodic();
@@ -402,7 +404,7 @@ static int button_watcher(struct pt *pt) {
   while(1) {
     button_down_ms = 0;
     PT_WAIT_UNTIL(pt, button_pressed());
-    Serial.print(F("button "));
+    Serial.print(FLASH("button "));
     Serial.println(active_button);
     // debounce press
     timer_set(&button_timer, 10);
@@ -442,14 +444,14 @@ static int update_relay(struct pt *pt) {
     pid_duty_cycle = (int)pid_output;
     if(pid_duty_cycle > 0) {
       relay_active = 1;
-      Serial.print(F("RELAY ON "));
+      Serial.print(FLASH("RELAY ON "));
       Serial.println(pid_duty_cycle);
       timer_set(&relay_timer, pid_duty_cycle);
       PT_WAIT_UNTIL(pt, timer_expired(&relay_timer));
     }
     if (RELAY_PERIOD - pid_duty_cycle > 0) {
       relay_active = 0;
-      Serial.print(F("RELAY OFF "));
+      Serial.print(FLASH("RELAY OFF "));
       Serial.println(RELAY_PERIOD - pid_duty_cycle);
       timer_set(&relay_timer, RELAY_PERIOD - pid_duty_cycle);
       PT_WAIT_UNTIL(pt, timer_expired(&relay_timer));
@@ -466,12 +468,12 @@ static int update_faketemp(struct pt *pt) {
     // this isn't actually reliable, but it's just for fun.
     if (relay_active && (millis() % 500 == 0)) {
       current_temperature += 1;
-      Serial.print(F("Temperature "));
+      Serial.print(FLASH("Temperature "));
       Serial.println(current_temperature);
     }
     else if (!relay_active && (millis() % 2000 == 0)) {
       current_temperature -= 1;
-      Serial.print(F("Temperature "));
+      Serial.print(FLASH("Temperature "));
       Serial.println(current_temperature);
     }
     PT_YIELD(pt);
