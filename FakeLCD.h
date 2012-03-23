@@ -13,7 +13,6 @@
 #ifndef FAKELCD_H
 #define FAKELCD_H
 
-// Fake LCD panel class.  Should be in a library.
 class FakeLCD : public Print {
 #define LCD_WIDTH_MAX 20
 #define LCD_HEIGHT_MAX 2
