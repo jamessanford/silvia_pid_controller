@@ -48,7 +48,6 @@ static struct pt pt_led2;
 static struct pt pt_button_watch;
 static struct pt pt_update_display;
 static struct pt pt_relay;
-static struct pt pt_faketemp;
 
 static uint8_t active_button = 0;  // set by button_watcher()->button_pressed()
 
@@ -56,7 +55,7 @@ static uint8_t active_button = 0;  // set by button_watcher()->button_pressed()
 // on 'pid_output' (between 0 and RELAY_PERIOD),
 // as it tries to close in on 'set_temperature'
 static double current_temperature = 0;
-static double set_temperature = 224.0;
+static double set_temperature = 0;
 static double pid_output = 0;
 
 // Tune these for how fast the boiler heats up and how slowly the water cools.
@@ -487,7 +486,6 @@ void setup() {
   PT_INIT(&pt_button_watch);
   PT_INIT(&pt_update_display);
   PT_INIT(&pt_relay);
-  PT_INIT(&pt_faketemp);
 
   get_temperature();            // current temperature (Pv)
   set_temperature = 224.0;      // desired temperature (Sv)
