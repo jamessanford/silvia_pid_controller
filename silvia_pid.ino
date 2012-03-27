@@ -39,6 +39,10 @@
 #define PIN_BUTTON_LEFT 5
 #define PIN_BUTTON_RIGHT 6
 
+#define PIN_THERM_CLK A3
+#define PIN_THERM_CS A4
+#define PIN_THERM_DO A5
+
 #define MIN_SET_TEMP 150
 #define MAX_SET_TEMP 300
 
@@ -67,10 +71,6 @@ PID pid_controller(&current_temperature,
                    Kp, Ki, Kd, DIRECT);
 
 FakeLCD fake_lcd(20, 2);
-
-#define PIN_THERM_CLK A3
-#define PIN_THERM_CS A4
-#define PIN_THERM_DO A5
 
 MAX6675 thermocouple(PIN_THERM_CLK, PIN_THERM_CS, PIN_THERM_DO);
 
