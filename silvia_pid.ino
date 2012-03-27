@@ -225,8 +225,8 @@ class DisplayPID : public SilviaDisplay {
     void refresh_pid(void) {
       fake_lcd.clear();
       fake_lcd.print(FLASH(" P    I    D"));
-//                   "90  10.5   0"
-//                    012345678901
+//                         "90  10.5   0"
+//                          012345678901
       fake_lcd.setCursor(0, 1);
       if (Kp < 10) {
         fake_lcd.print(" ");
@@ -294,7 +294,6 @@ class DisplayUnits : public SilviaDisplay {
       fake_lcd.print(FLASH("Display Units"));
       fake_lcd.setCursor(2, 1);
       fake_lcd.print(FLASH("Fahrenheit"));
-//      fake_lcd.print("Celcius");
       fake_lcd.show();
       periodic();
     }
@@ -307,14 +306,41 @@ class DisplayUnits : public SilviaDisplay {
     }
 };
 
+class DisplayRAM : public SilviaDisplay {
+  public:
+    virtual void hide(void) {
+    }
+    virtual void show(void) {
+      periodic();
+    }
+    virtual void press(int pin, int down_ms) {
+    }
+    virtual void release(int pin) {
+    }
+    virtual void periodic(void) {
+      extern int __heap_start, *__brkval;
+      int v;
+      fake_lcd.clear();
+      fake_lcd.setCursor(0,0);
+      fake_lcd.print(FLASH("Free RAM"));
+      fake_lcd.setCursor(2, 1);
+      fake_lcd.print(
+        (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval)
+      );
+      fake_lcd.print(FLASH(" bytes"));
+      display_current_temperature();  // includes fake_lcd.show();
+    }
+};
+
 static uint8_t active_display = 0;  // Which display_panel[] is active.
-#define DISPLAY_COUNT 5
+#define DISPLAY_COUNT 6
 static SilviaDisplay *display_panel[DISPLAY_COUNT] = {
   new DisplayNormal(),
   new DisplayPID((char *)"P", &Kp),
   new DisplayPID((char *)"I", &Ki),
   new DisplayPID((char *)"D", &Kd),
-  new DisplayUnits() };
+  new DisplayUnits(),
+  new DisplayRAM() };
 
 // Each display mode gets called periodically so it can blink text
 // or update the temperature display.
