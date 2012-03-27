@@ -14,15 +14,21 @@
 // github.com/br3ttb/Arduino-PID-Library in Documents/Arduino/libraries/PID_v1
 #include <PID_v1.h>
 
+// github.com/adafruit/MAX6675-library
+#include <max6675.h>
+
 // AVR watchdog reset
 #include <avr/wdt.h>
+
+// Set to '1' if you don't have a real boiler to hook up.
+#define FAKE_BOILER 0
 
 #include "FakeLCD.h"
 
 #define FLASH(__s) F(__s)
 
-// Change the relay in 1000ms increments, this value is just for testing.
-#define RELAY_PERIOD 1000
+// For testing, consider using 1000ms increments instead of 10000ms.
+#define RELAY_PERIOD 10000
 
 #define PIN_LED_BUILTIN 13
 #define PIN_LED_EXTERNAL 3
@@ -44,8 +50,7 @@ static struct pt pt_update_display;
 static struct pt pt_relay;
 static struct pt pt_faketemp;
 
-static int active_button = 0;  // set by button_watcher() -> button_pressed()
-static int relay_active = 0;   // set by update_relay()
+static uint8_t active_button = 0;  // set by button_watcher()->button_pressed()
 
 // pid_controller will take 'current_temperature' and give us a duty cycle
 // on 'pid_output' (between 0 and RELAY_PERIOD),
@@ -63,6 +68,12 @@ PID pid_controller(&current_temperature,
                    Kp, Ki, Kd, DIRECT);
 
 FakeLCD fake_lcd(20, 2);
+
+#define PIN_THERM_CLK A3
+#define PIN_THERM_CS A4
+#define PIN_THERM_DO A5
+
+MAX6675 thermocouple(PIN_THERM_CLK, PIN_THERM_CS, PIN_THERM_DO);
 
 // Timer from protothreads example.
 struct s_timer { unsigned long start, interval; };
@@ -101,7 +112,7 @@ static int blink_led2(struct pt *pt) {
     PT_WAIT_UNTIL(pt, timer_expired(&led_timer2));
     toggle_led(PIN_LED_EXTERNAL);
   }
-   PT_END(pt);
+  PT_END(pt);
 }
 
 // Return the pin number of the first button pressed down that we see.
@@ -206,9 +217,6 @@ class DisplayPID : public SilviaDisplay {
       if(_pid_variable == &Kp) {
         _pid_x = 1;
       } else if(_pid_variable == &Ki) {
-        _pid_min = 0;
-        _pid_max = 50;
-        _pid_delta = 0.5;
         _pid_x = 6;
       } else if(_pid_variable == &Kd) {
         _pid_x = 11;
@@ -299,7 +307,7 @@ class DisplayUnits : public SilviaDisplay {
     }
 };
 
-static int active_display = 0;  // Which display_panel[] is active.
+static uint8_t active_display = 0;  // Which display_panel[] is active.
 #define DISPLAY_COUNT 5
 static SilviaDisplay *display_panel[DISPLAY_COUNT] = {
   new DisplayNormal(),
@@ -326,13 +334,13 @@ static void change_display(int pin, int button_down_ms) {
   if (button_down_ms == 0 || button_down_ms > 400) {
     timer_set(&display_refresh_timer, 1000);
     display_panel[active_display]->hide();
-    if (pin == PIN_BUTTON_LEFT) {
+    if (pin == PIN_BUTTON_RIGHT) {
       active_display += 1;
       if (active_display >= DISPLAY_COUNT) {
         active_display = 0;
       }
     }
-    else if (pin == PIN_BUTTON_RIGHT) {
+    else if (pin == PIN_BUTTON_LEFT) {
       active_display -= 1;
       if (active_display < 0) {
         active_display = DISPLAY_COUNT - 1;
@@ -389,14 +397,14 @@ static int update_relay(struct pt *pt) {
   while (1) {
     pid_duty_cycle = (int)pid_output;
     if(pid_duty_cycle > 0) {
-      relay_active = 1;
+      digitalWrite(PIN_RELAY_CONTROL, HIGH);
       Serial.print(FLASH("RELAY ON "));
       Serial.println(pid_duty_cycle);
       timer_set(&relay_timer, pid_duty_cycle);
       PT_WAIT_UNTIL(pt, timer_expired(&relay_timer));
     }
     if (RELAY_PERIOD - pid_duty_cycle > 0) {
-      relay_active = 0;
+      digitalWrite(PIN_RELAY_CONTROL, LOW);
       Serial.print(FLASH("RELAY OFF "));
       Serial.println(RELAY_PERIOD - pid_duty_cycle);
       timer_set(&relay_timer, RELAY_PERIOD - pid_duty_cycle);
@@ -406,26 +414,35 @@ static int update_relay(struct pt *pt) {
   PT_END(pt);
 }
 
+#if FAKE_BOILER
 // Fake boiler heater and tank that fluctuates temperature.
 // This implementation is only reliable if we get called every millisecond.
-static int update_faketemp(struct pt *pt) {
-  PT_BEGIN(pt);
-  while (1) {
-    // this isn't actually reliable, but it's just for fun.
-    if (relay_active && (millis() % 500 == 0)) {
-      current_temperature += 1;
-      Serial.print(FLASH("Temperature "));
-      Serial.println(current_temperature);
-    }
-    else if (!relay_active && (millis() % 2000 == 0)) {
-      current_temperature -= 1;
-      Serial.print(FLASH("Temperature "));
-      Serial.println(current_temperature);
-    }
-    PT_YIELD(pt);
+static void get_temperature(void) {
+  if (current_temperature == 0) {
+    current_temperature = 180.0;
   }
-  PT_END(pt);
+  // this isn't actually reliable, but it's just for fun.
+  if ((millis() % 531 == 0) && digitalRead(PIN_RELAY_CONTROL() == HIGH) {
+    current_temperature += 1;
+    Serial.print(FLASH("Temperature "));
+    Serial.println(current_temperature);
+  }
+  else if ((millis() % 2031 == 0) && digitalRead(PIN_RELAY_CONTROL() == LOW) {
+    current_temperature -= 1;
+    Serial.print(FLASH("Temperature "));
+    Serial.println(current_temperature);
+  }
 }
+#else
+static void get_temperature(void) {
+  double tmp_c = thermocouple.readCelsius();
+  if (isnan(tmp_c)) {
+    Serial.println("temperature is NAN!");
+    return;
+  }
+  current_temperature = (1.8 * tmp_c) + 32;
+}
+#endif  // FAKE_BOILER
 
 void setup() {
   Serial.begin(9600);
@@ -437,6 +454,8 @@ void setup() {
   pinMode(PIN_BUTTON_LEFT, INPUT);
   pinMode(PIN_BUTTON_RIGHT, INPUT);
 
+  digitalWrite(PIN_RELAY_CONTROL, LOW);
+
   PT_INIT(&pt_led);
   PT_INIT(&pt_led2);
   PT_INIT(&pt_button_watch);
@@ -444,8 +463,8 @@ void setup() {
   PT_INIT(&pt_relay);
   PT_INIT(&pt_faketemp);
 
-  current_temperature = 180.0;  // fake boiler temperature
-  set_temperature = 224.0;      // desired temperature
+  get_temperature();            // current temperature (Pv)
+  set_temperature = 224.0;      // desired temperature (Sv)
 
   pid_controller.SetOutputLimits(0, RELAY_PERIOD);
   pid_controller.SetMode(AUTOMATIC);
@@ -463,12 +482,10 @@ void loop() {
   // See if any of our protothreads have work to do.
   blink_led(&pt_led);
   blink_led2(&pt_led2);
+  get_temperature();
   button_watcher(&pt_button_watch);
   update_display(&pt_update_display);
 
   pid_controller.Compute();
   update_relay(&pt_relay);
-
-  // make the temp float around depending on relay status and time
-  update_faketemp(&pt_faketemp);
 }
