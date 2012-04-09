@@ -20,29 +20,28 @@
 // github.com/adafruit/MAX6675-library
 #include <max6675.h>
 
+// For teensy new operator
+#include <new.h>
+
 // AVR watchdog reset
 #include <avr/wdt.h>
-
-// Set to '1' if you don't have a real boiler to hook up.
-#define FAKE_BOILER 0
 
 #define FLASH(__s) F(__s)
 
 // For testing, consider using 1000ms increments instead of 10000ms.
 #define RELAY_PERIOD 10000
 
-#define PIN_LED_BUILTIN 13
-#define PIN_LED_EXTERNAL 3
-#define PIN_RELAY_CONTROL 3
+#define PIN_LED_BUILTIN PIN_D6
+#define PIN_RELAY_CONTROL PIN_C7
 
-#define PIN_BUTTON_UP 2
-#define PIN_BUTTON_DOWN 2
-#define PIN_BUTTON_LEFT 2
-#define PIN_BUTTON_RIGHT 2
+#define PIN_BUTTON_UP PIN_B7
+#define PIN_BUTTON_DOWN PIN_C6
+#define PIN_BUTTON_LEFT PIN_D0
+#define PIN_BUTTON_RIGHT PIN_D1
 
-#define PIN_THERM_CLK A3
-#define PIN_THERM_CS A4
-#define PIN_THERM_DO A5
+#define PIN_THERM_CLK PIN_B4
+#define PIN_THERM_CS PIN_D4
+#define PIN_THERM_DO PIN_D5
 
 #define MIN_SET_TEMP 150
 #define MAX_SET_TEMP 300
@@ -56,7 +55,6 @@
 
 // Our protothreads.
 static struct pt pt_led;
-static struct pt pt_led2;
 static struct pt pt_button_watch;
 static struct pt pt_update_display;
 static struct pt pt_relay;
@@ -107,17 +105,6 @@ static int blink_led(struct pt *pt) {
     timer_set(&led_timer, 1000);
     PT_WAIT_UNTIL(pt, timer_expired(&led_timer));
     toggle_led(PIN_LED_BUILTIN);
-  }
-  PT_END(pt);
-}
-
-static int blink_led2(struct pt *pt) {
-  static s_timer led_timer2;
-  PT_BEGIN(pt);
-  while(1) {
-    timer_set(&led_timer2, 500);
-    PT_WAIT_UNTIL(pt, timer_expired(&led_timer2));
-    toggle_led(PIN_LED_EXTERNAL);
   }
   PT_END(pt);
 }
@@ -443,26 +430,6 @@ static int update_relay(struct pt *pt) {
   PT_END(pt);
 }
 
-#if FAKE_BOILER
-// Fake boiler heater and tank that fluctuates temperature.
-// This implementation is only reliable if we get called every millisecond.
-static void get_temperature(void) {
-  if (current_temperature == 0) {
-    current_temperature = 180.0;
-  }
-  // this isn't actually reliable, but it's just for fun.
-  if ((millis() % 531 == 0) && digitalRead(PIN_RELAY_CONTROL() == HIGH) {
-    current_temperature += 1;
-    Serial.print(FLASH("Temperature "));
-    Serial.println(current_temperature);
-  }
-  else if ((millis() % 2031 == 0) && digitalRead(PIN_RELAY_CONTROL() == LOW) {
-    current_temperature -= 1;
-    Serial.print(FLASH("Temperature "));
-    Serial.println(current_temperature);
-  }
-}
-#else
 static void get_temperature(void) {
   double tmp_c = thermocouple.readCelsius();
   if (isnan(tmp_c)) {
@@ -471,22 +438,19 @@ static void get_temperature(void) {
   }
   current_temperature = (1.8 * tmp_c) + 32;
 }
-#endif  // FAKE_BOILER
 
 void setup() {
   Serial.begin(9600);
   pinMode(PIN_LED_BUILTIN, OUTPUT);
-  pinMode(PIN_LED_EXTERNAL, OUTPUT);
   pinMode(PIN_RELAY_CONTROL, OUTPUT);
-  pinMode(PIN_BUTTON_UP, INPUT);
-  pinMode(PIN_BUTTON_DOWN, INPUT);
-  pinMode(PIN_BUTTON_LEFT, INPUT);
-  pinMode(PIN_BUTTON_RIGHT, INPUT);
+  pinMode(PIN_BUTTON_UP, INPUT_PULLUP);
+  pinMode(PIN_BUTTON_DOWN, INPUT_PULLUP);
+  pinMode(PIN_BUTTON_LEFT, INPUT_PULLUP);
+  pinMode(PIN_BUTTON_RIGHT, INPUT_PULLUP);
 
   digitalWrite(PIN_RELAY_CONTROL, LOW);
 
   PT_INIT(&pt_led);
-  PT_INIT(&pt_led2);
   PT_INIT(&pt_button_watch);
   PT_INIT(&pt_update_display);
   PT_INIT(&pt_relay);
@@ -510,7 +474,6 @@ void loop() {
 
   // See if any of our protothreads have work to do.
   blink_led(&pt_led);
-  blink_led2(&pt_led2);
   get_temperature();
   button_watcher(&pt_button_watch);
   update_display(&pt_update_display);
