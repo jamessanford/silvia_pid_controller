@@ -20,7 +20,7 @@
 // github.com/adafruit/MAX6675-library
 #include <max6675.h>
 
-// For teensy new operator
+// For teensy new operator, copy new.cpp and new.h from the arduino core.
 #include <new.h>
 
 // AVR watchdog reset
