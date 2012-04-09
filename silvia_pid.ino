@@ -34,6 +34,13 @@
 #define PIN_LED_BUILTIN PIN_D6
 #define PIN_RELAY_CONTROL PIN_C7
 
+#define LCD_RS PIN_F1
+#define LCD_EN PIN_F0
+#define LCD_DB4 PIN_F4
+#define LCD_DB5 PIN_F5
+#define LCD_DB6 PIN_F6
+#define LCD_DB7 PIN_F7
+
 #define PIN_BUTTON_UP PIN_B7
 #define PIN_BUTTON_DOWN PIN_C6
 #define PIN_BUTTON_LEFT PIN_D0
@@ -45,13 +52,6 @@
 
 #define MIN_SET_TEMP 150
 #define MAX_SET_TEMP 300
-
-#define LCD_RS 7
-#define LCD_EN 8
-#define LCD_DB4 9
-#define LCD_DB5 10
-#define LCD_DB6 11
-#define LCD_DB7 12
 
 // Our protothreads.
 static struct pt pt_led;
