@@ -8,6 +8,9 @@
  * This software is without warranty.
  */
 
+// Controller for the LCD.
+#include <LiquidCrystal.h>
+
 // protothreads, external library in Documents/Arduino/libraries/pt/pt.h
 #include <pt.h>
 
@@ -23,8 +26,6 @@
 // Set to '1' if you don't have a real boiler to hook up.
 #define FAKE_BOILER 0
 
-#include "FakeLCD.h"
-
 #define FLASH(__s) F(__s)
 
 // For testing, consider using 1000ms increments instead of 10000ms.
@@ -32,12 +33,12 @@
 
 #define PIN_LED_BUILTIN 13
 #define PIN_LED_EXTERNAL 3
-#define PIN_RELAY_CONTROL 7
+#define PIN_RELAY_CONTROL 3
 
 #define PIN_BUTTON_UP 2
-#define PIN_BUTTON_DOWN 4
-#define PIN_BUTTON_LEFT 5
-#define PIN_BUTTON_RIGHT 6
+#define PIN_BUTTON_DOWN 2
+#define PIN_BUTTON_LEFT 2
+#define PIN_BUTTON_RIGHT 2
 
 #define PIN_THERM_CLK A3
 #define PIN_THERM_CS A4
@@ -45,6 +46,13 @@
 
 #define MIN_SET_TEMP 150
 #define MAX_SET_TEMP 300
+
+#define LCD_RS 7
+#define LCD_EN 8
+#define LCD_DB4 9
+#define LCD_DB5 10
+#define LCD_DB6 11
+#define LCD_DB7 12
 
 // Our protothreads.
 static struct pt pt_led;
@@ -70,7 +78,7 @@ PID pid_controller(&current_temperature,
                    &set_temperature,
                    Kp, Ki, Kd, DIRECT);
 
-FakeLCD fake_lcd(20, 2);
+LiquidCrystal lcd(LCD_RS, LCD_EN, LCD_DB4, LCD_DB5, LCD_DB6, LCD_DB7);
 
 MAX6675 thermocouple(PIN_THERM_CLK, PIN_THERM_CS, PIN_THERM_DO);
 
@@ -136,20 +144,18 @@ static int button_pressed(void) {
 }
 
 static void display_set_temperature(void) {
-  fake_lcd.setCursor(0, 1);
-  fake_lcd.print(set_temperature, 0);
-  fake_lcd.print("F");
-  fake_lcd.show();
+  lcd.setCursor(0, 1);
+  lcd.print(set_temperature, 0);
+  lcd.print("F");
 }
 
 static void display_current_temperature(void) {
-  fake_lcd.setCursor(20 - 4, 1);
+  lcd.setCursor(16 - 4, 1);
   if (current_temperature < 100) {
-    fake_lcd.print(" ");
+    lcd.print(" ");
   }
-  fake_lcd.print(current_temperature, 0);  // round to whole degree
-  fake_lcd.print("F");
-  fake_lcd.show();
+  lcd.print(current_temperature, 0);  // round to whole degree
+  lcd.print("F");
 }
 
 // Base class for each different display mode.
@@ -167,8 +173,8 @@ class DisplayNormal : public SilviaDisplay {
     virtual void hide(void) {
     }
     virtual void show(void) {
-      fake_lcd.clear();
-      fake_lcd.print(FLASH("Miss Silvia"));
+      lcd.clear();
+      lcd.print(FLASH("Miss Silvia"));
       display_set_temperature();
       periodic();  // this is just to show the current temperature
     }
@@ -222,28 +228,28 @@ class DisplayPID : public SilviaDisplay {
       }
     }
     void refresh_pid(void) {
-      fake_lcd.clear();
-      fake_lcd.print(FLASH(" P    I    D"));
-//                         "90  10.5   0"
-//                          012345678901
-      fake_lcd.setCursor(0, 1);
+      lcd.clear();
+      lcd.print(FLASH(" P    I    D"));
+//                    "90  10.5   0"
+//                     012345678901
+      lcd.setCursor(0, 1);
       if (Kp < 10) {
-        fake_lcd.print(" ");
+        lcd.print(" ");
       }
-      fake_lcd.print(Kp, 0);
-      fake_lcd.setCursor(4, 1);
+      lcd.print(Kp, 0);
+      lcd.setCursor(4, 1);
       if (Ki < 10) {
-        fake_lcd.print(" ");
+        lcd.print(" ");
       }
-      fake_lcd.print(Ki, 1);
-      fake_lcd.setCursor(10, 1);
+      lcd.print(Ki, 1);
+      lcd.setCursor(10, 1);
       if (Kd < 10) {
-        fake_lcd.print(" ");
+        lcd.print(" ");
       }
-      fake_lcd.print(Kd, 0);
+      lcd.print(Kd, 0);
       // redraw any currently-blank items, and the temperature.
       _blink_state ^= 1;  // negated by periodic();
-      periodic();         // includes fake_lcd.show();
+      periodic();
     }
     virtual void hide(void) {
     }
@@ -273,14 +279,14 @@ class DisplayPID : public SilviaDisplay {
       Serial.println(*_pid_variable);
     }
     virtual void periodic(void) {
-      fake_lcd.setCursor(_pid_x, 0);
+      lcd.setCursor(_pid_x, 0);
       _blink_state ^= 1;
       if (_blink_state) {
-        fake_lcd.print(" ");
+        lcd.print(" ");
       } else {
-        fake_lcd.print(*_pid_letter);
+        lcd.print(*_pid_letter);
       }
-      display_current_temperature();  // includes fake_lcd.show();
+      display_current_temperature();
     }
 };
 
@@ -289,11 +295,10 @@ class DisplayUnits : public SilviaDisplay {
     virtual void hide(void) {
     }
     virtual void show(void) {
-      fake_lcd.clear();
-      fake_lcd.print(FLASH("Display Units"));
-      fake_lcd.setCursor(2, 1);
-      fake_lcd.print(FLASH("Fahrenheit"));
-      fake_lcd.show();
+      lcd.clear();
+      lcd.print(FLASH("Display Units"));
+      lcd.setCursor(2, 1);
+      lcd.print(FLASH("Fahrenheit"));
       periodic();
     }
     virtual void press(int pin, int down_ms) {
@@ -319,15 +324,14 @@ class DisplayRAM : public SilviaDisplay {
     virtual void periodic(void) {
       extern int __heap_start, *__brkval;
       int v;
-      fake_lcd.clear();
-      fake_lcd.setCursor(0,0);
-      fake_lcd.print(FLASH("Free RAM"));
-      fake_lcd.setCursor(2, 1);
-      fake_lcd.print(
+      lcd.clear();
+      lcd.print(FLASH("Free RAM"));
+      lcd.setCursor(2, 1);
+      lcd.print(
         (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval)
       );
-      fake_lcd.print(FLASH(" bytes"));
-      display_current_temperature();  // includes fake_lcd.show();
+      lcd.print(FLASH(" bytes"));
+      display_current_temperature();
     }
 };
 
@@ -479,6 +483,8 @@ void setup() {
   pinMode(PIN_BUTTON_LEFT, INPUT);
   pinMode(PIN_BUTTON_RIGHT, INPUT);
 
+  lcd.begin(16, 2);
+
   digitalWrite(PIN_RELAY_CONTROL, LOW);
 
   PT_INIT(&pt_led);
@@ -493,7 +499,6 @@ void setup() {
   pid_controller.SetOutputLimits(0, RELAY_PERIOD);
   pid_controller.SetMode(AUTOMATIC);
 
-  fake_lcd.clear();
   display_panel[active_display]->show();
 
   // reset microcontroller if 8 seconds elapse between calls to wdt_reset()
