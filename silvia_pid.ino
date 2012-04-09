@@ -483,8 +483,6 @@ void setup() {
   pinMode(PIN_BUTTON_LEFT, INPUT);
   pinMode(PIN_BUTTON_RIGHT, INPUT);
 
-  lcd.begin(16, 2);
-
   digitalWrite(PIN_RELAY_CONTROL, LOW);
 
   PT_INIT(&pt_led);
@@ -492,6 +490,8 @@ void setup() {
   PT_INIT(&pt_button_watch);
   PT_INIT(&pt_update_display);
   PT_INIT(&pt_relay);
+
+  lcd.begin(16, 2);  // also clears the display
 
   get_temperature();            // current temperature (Pv)
   set_temperature = 224.0;      // desired temperature (Sv)
