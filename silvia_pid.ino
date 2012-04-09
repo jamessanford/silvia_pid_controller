@@ -59,6 +59,7 @@ static struct pt pt_button_watch;
 static struct pt pt_update_display;
 static struct pt pt_relay;
 
+static boolean active_alarm = false;
 static uint8_t active_button = 0;  // set by button_watcher()->button_pressed()
 
 // pid_controller will take 'current_temperature' and give us a duty cycle
@@ -88,7 +89,7 @@ static void timer_set(struct s_timer *t, int interval) {
   t->start = millis();
 }
 
-static int timer_expired(struct s_timer *t) {
+static int timer_expired(const struct s_timer *t) {
   return (t->start + t->interval) <= millis();
 }
 
@@ -406,7 +407,7 @@ static int button_watcher(struct pt *pt) {
   PT_END(pt);
 }
 
-int filter_duty_cycle(int duty_cycle) {
+static int filter_pid_output(int duty_cycle) {
   // May need to adjust, but for now don't allow the boiler to be on
   // when the temperature is high, and don't allow sub-400ms cycles.
 
@@ -452,6 +453,34 @@ static void get_temperature(void) {
   current_temperature = (1.8 * tmp_c) + 32;
 }
 
+static void enable_alarm(const __FlashStringHelper *msg) {
+  if (millis() < 5000) {
+    // Only enable alarms when we have been on for five seconds.
+    // TODO: Remove if check_alarm() gets smarter.
+    return;
+  }
+  active_alarm = true;
+  digitalWrite(PIN_RELAY_CONTROL, LOW);  // disable solid state relay
+  lcd.clear();
+  lcd.print(msg);
+  display_current_temperature();
+  Serial.print("ALARM: ");
+  Serial.println(msg);
+}
+
+static void check_alarm(void) {
+  // TODO: Consider a 'warning' for 5 seconds and then it becomes an alarm.
+  if (active_alarm) {
+    display_current_temperature();
+  } else if (current_temperature >= 300) {
+    // TODO: Verify steam temperature.
+    enable_alarm(FLASH("TEMP TOO HOT"));
+  } else if (current_temperature < 40) {
+    // Should never be this low, probe not working?
+    enable_alarm(FLASH("TEMP TOO LOW"));
+  }
+}
+
 void setup() {
   Serial.begin(9600);
   pinMode(PIN_LED_BUILTIN, OUTPUT);
@@ -488,9 +517,13 @@ void loop() {
   // See if any of our protothreads have work to do.
   blink_led(&pt_led);
   get_temperature();
-  button_watcher(&pt_button_watch);
-  update_display(&pt_update_display);
+  check_alarm();
+  if (active_alarm == false) {
+    button_watcher(&pt_button_watch);
+    update_display(&pt_update_display);
 
-  pid_controller.Compute();
-  update_relay(&pt_relay);
+    pid_controller.Compute();
+    update_relay(&pt_relay);
+  }
+  // TODO: sleep microcontroller for 10ms
 }
