@@ -406,12 +406,25 @@ static int button_watcher(struct pt *pt) {
   PT_END(pt);
 }
 
+int filter_duty_cycle(int duty_cycle) {
+  // May need to adjust, but for now don't allow the boiler to be on
+  // when the temperature is high, and don't allow sub-400ms cycles.
+
+  if (current_temperature >= set_temperature) {
+    return 0;
+  } else if (duty_cycle > 0 && duty_cycle < 400) {
+    return 400;
+  } else {
+    return duty_cycle;
+  }
+}
+
 static int update_relay(struct pt *pt) {
   static s_timer relay_timer;
   static int pid_duty_cycle;
   PT_BEGIN(pt);
   while (1) {
-    pid_duty_cycle = (int)pid_output;
+    pid_duty_cycle = filter_pid_output((int)pid_output);
     if(pid_duty_cycle > 0) {
       digitalWrite(PIN_RELAY_CONTROL, HIGH);
       Serial.print(FLASH("RELAY ON "));
