@@ -11,7 +11,6 @@ cools down at a certain rate.  Just set FAKE_BOILER to 1.
 
 <pre>
 TODO:
-- control real LCD instead of FakeLCD
 - initialize settings from eeprom
 - update changed settings to eeprom
 - remove debugging Serial.print() statements
