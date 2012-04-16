@@ -34,12 +34,17 @@
 #define PIN_LED_BUILTIN PIN_D6
 #define PIN_RELAY_CONTROL PIN_C7
 
-#define LCD_RS PIN_F1
-#define LCD_EN PIN_F0
+#define LCD_RS PIN_F0
+#define LCD_EN PIN_F1
 #define LCD_DB4 PIN_F4
 #define LCD_DB5 PIN_F5
 #define LCD_DB6 PIN_F6
 #define LCD_DB7 PIN_F7
+
+// backlight RGB pins
+#define LCD_BR PIN_B6
+#define LCD_BG PIN_B5
+#define LCD_BB PIN_D7
 
 #define PIN_BUTTON_UP PIN_B7
 #define PIN_BUTTON_DOWN PIN_C6
@@ -491,12 +496,14 @@ void setup() {
   Serial.begin(9600);
   pinMode(PIN_LED_BUILTIN, OUTPUT);
   pinMode(PIN_RELAY_CONTROL, OUTPUT);
+  pinMode(LCD_BR, OUTPUT);
   pinMode(PIN_BUTTON_UP, INPUT_PULLUP);
   pinMode(PIN_BUTTON_DOWN, INPUT_PULLUP);
   pinMode(PIN_BUTTON_LEFT, INPUT_PULLUP);
   pinMode(PIN_BUTTON_RIGHT, INPUT_PULLUP);
 
   digitalWrite(PIN_RELAY_CONTROL, LOW);
+  digitalWrite(LCD_BR, OUTPUT);
 
   PT_INIT(&pt_led);
   PT_INIT(&pt_button_watch);
