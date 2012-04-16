@@ -452,6 +452,7 @@ static int update_relay(struct pt *pt) {
 static void get_temperature(void) {
   double tmp_c = thermocouple.readCelsius();
   if (isnan(tmp_c)) {
+    // TODO: set a warning timer for check_alarm and don't always print it out
     Serial.println("temperature is NAN!");
     return;
   }
