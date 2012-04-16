@@ -415,7 +415,11 @@ static int filter_pid_output(int duty_cycle) {
   if (current_temperature >= set_temperature) {
     return 0;
   } else if (duty_cycle > 0 && duty_cycle < 400) {
+    // turn on for a minimum of 400ms.
     return 400;
+  } else if (duty_cycle > RELAY_PERIOD - 400) {
+    // when duty_cycle is close to full relay period, use the full period.
+    return RELAY_PERIOD;
   } else {
     return duty_cycle;
   }
