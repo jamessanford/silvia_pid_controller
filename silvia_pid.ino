@@ -113,16 +113,16 @@ static int blink_led(struct pt *pt) {
 // Return the pin number of the first button pressed down that we see.
 // 'active_button' is a global used by others.
 static int button_pressed(void) {
-  if (digitalRead(PIN_BUTTON_UP) == HIGH) {
+  if (digitalRead(PIN_BUTTON_UP) == LOW) {
     active_button = PIN_BUTTON_UP;
   }
-  else if (digitalRead(PIN_BUTTON_DOWN) == HIGH) {
+  else if (digitalRead(PIN_BUTTON_DOWN) == LOW) {
     active_button = PIN_BUTTON_DOWN;
   }
-  else if (digitalRead(PIN_BUTTON_LEFT) == HIGH) {
+  else if (digitalRead(PIN_BUTTON_LEFT) == LOW) {
     active_button = PIN_BUTTON_LEFT;
   }
-  else if (digitalRead(PIN_BUTTON_RIGHT) == HIGH) {
+  else if (digitalRead(PIN_BUTTON_RIGHT) == LOW) {
     active_button = PIN_BUTTON_RIGHT;
   }
   else {
@@ -358,9 +358,10 @@ static void change_display(int pin, int button_down_ms) {
       }
     }
     else if (pin == PIN_BUTTON_LEFT) {
-      active_display -= 1;
-      if (active_display < 0) {
+      if (active_display == 0) {
         active_display = DISPLAY_COUNT - 1;
+      } else {
+        active_display -= 1;
       }
     }
     display_panel[active_display]->show();
@@ -380,7 +381,7 @@ static int button_watcher(struct pt *pt) {
     // debounce press
     timer_set(&button_timer, 10);
     PT_WAIT_UNTIL(pt, timer_expired(&button_timer));
-    while(digitalRead(active_button) == HIGH) {
+    while(digitalRead(active_button) == LOW) {
       if (button_down_ms % 100 == 0) {
         // this will fire the initial '0ms' and then every 100ms after
         if (active_button == PIN_BUTTON_LEFT ||
