@@ -33,7 +33,7 @@
 #define RELAY_PERIOD 10000
 
 #define PIN_LED_BUILTIN PIN_D6
-#define PIN_RELAY_CONTROL PIN_C7
+#define PIN_RELAY_CONTROL PIN_F0
 
 // backlight RGB pins
 // #define LCD_BR PIN_D7
