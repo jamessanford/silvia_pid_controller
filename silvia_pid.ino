@@ -8,14 +8,15 @@
  * This software is without warranty.
  */
 
-// Controller for the LCD.
-#include <LiquidCrystal.h>
-
 // protothreads, external library in Documents/Arduino/libraries/pt/pt.h
 #include <pt.h>
 
 // github.com/br3ttb/Arduino-PID-Library in Documents/Arduino/libraries/PID_v1
 #include <PID_v1.h>
+
+// https://bitbucket.org/fmalpartida/st7036-display-driver in LCD_C0220BiZ
+#include <Wire.h>
+#include <LCD_C0220BiZ.h>
 
 // github.com/adafruit/MAX6675-library
 #include <max6675.h>
@@ -34,32 +35,26 @@
 #define PIN_LED_BUILTIN PIN_D6
 #define PIN_RELAY_CONTROL PIN_C7
 
-#define LCD_RS PIN_F0
-#define LCD_EN PIN_F1
-#define LCD_DB4 PIN_F4
-#define LCD_DB5 PIN_F5
-#define LCD_DB6 PIN_F6
-#define LCD_DB7 PIN_F7
-
 // backlight RGB pins
-#define LCD_BR PIN_B6
-#define LCD_BG PIN_B5
-#define LCD_BB PIN_D7
+// #define LCD_BR PIN_D7
+#define LCD_BG PIN_B6
+#define LCD_BB PIN_B5
 
-#define PIN_BUTTON_UP PIN_B7
+#define PIN_BUTTON_UP PIN_C7
 #define PIN_BUTTON_DOWN PIN_C6
-#define PIN_BUTTON_LEFT PIN_D0
-#define PIN_BUTTON_RIGHT PIN_D1
+#define PIN_BUTTON_LEFT PIN_D3
+#define PIN_BUTTON_RIGHT PIN_D2
 
 #define PIN_THERM_CLK PIN_B4
-#define PIN_THERM_CS PIN_D4
-#define PIN_THERM_DO PIN_D5
+#define PIN_THERM_CS PIN_F6
+#define PIN_THERM_DO PIN_F7
 
 #define MIN_SET_TEMP 150
 #define MAX_SET_TEMP 300
 
 // Our protothreads.
 static struct pt pt_led;
+static struct pt pt_temperature;
 static struct pt pt_button_watch;
 static struct pt pt_update_display;
 static struct pt pt_relay;
@@ -82,20 +77,19 @@ PID pid_controller(&current_temperature,
                    &set_temperature,
                    Kp, Ki, Kd, DIRECT);
 
-LiquidCrystal lcd(LCD_RS, LCD_EN, LCD_DB4, LCD_DB5, LCD_DB6, LCD_DB7);
+static LCD_C0220BIZ lcd = LCD_C0220BIZ();
 
 MAX6675 thermocouple(PIN_THERM_CLK, PIN_THERM_CS, PIN_THERM_DO);
 
 // Timer from protothreads example.
-struct s_timer { unsigned long start, interval; };
+struct s_timer { unsigned long expiration; };
 
 static void timer_set(struct s_timer *t, int interval) {
-  t->interval = interval;
-  t->start = millis();
+  t->expiration = millis() + interval;
 }
 
 static int timer_expired(const struct s_timer *t) {
-  return (t->start + t->interval) <= millis();
+  return t->expiration <= millis();
 }
 
 void toggle_led(int pin_num) {
@@ -137,17 +131,21 @@ static int button_pressed(void) {
 }
 
 static void display_set_temperature(void) {
-  lcd.setCursor(0, 1);
+  lcd.setCursor(1, 0);
   lcd.print(set_temperature, 0);
   lcd.print("F");
 }
 
-static void display_current_temperature(void) {
-  lcd.setCursor(16 - 4, 1);
-  if (current_temperature < 100) {
+static void lcd_print_pad(uint8_t lt, double value, uint8_t precision) {
+  if (value < lt) {
     lcd.print(" ");
   }
-  lcd.print(current_temperature, 0);  // round to whole degree
+  lcd.print(value, precision);
+}
+
+static void display_current_temperature(void) {
+  lcd.setCursor(1, 20 - 4);
+  lcd_print_pad(100, current_temperature, 0);  // round to whole degree
   lcd.print("F");
 }
 
@@ -198,25 +196,25 @@ class DisplayNormal : public SilviaDisplay {
 class DisplayPID : public SilviaDisplay {
   private:
     boolean _blink_state;
-    char*   _pid_letter;
+    char    _pid_letter;
     double* _pid_variable;
     int     _pid_min;
     int     _pid_max;
     double  _pid_delta;
     int     _pid_x;
   public:
-    DisplayPID(char *pid_letter, double *pid_variable) {
+    DisplayPID(char pid_letter, double *pid_variable) {
       _blink_state = 0;
       _pid_letter = pid_letter;
       _pid_variable = pid_variable;
       _pid_min = 0;
       _pid_max = 99;
       _pid_delta = 1;
-      if(_pid_variable == &Kp) {
+      if(_pid_letter == 'P') {
         _pid_x = 1;
-      } else if(_pid_variable == &Ki) {
+      } else if(_pid_letter == 'I') {
         _pid_x = 6;
-      } else if(_pid_variable == &Kd) {
+      } else if(_pid_letter == 'D') {
         _pid_x = 11;
       }
     }
@@ -225,21 +223,12 @@ class DisplayPID : public SilviaDisplay {
       lcd.print(FLASH(" P    I    D"));
 //                    "90  10.5   0"
 //                     012345678901
-      lcd.setCursor(0, 1);
-      if (Kp < 10) {
-        lcd.print(" ");
-      }
-      lcd.print(Kp, 0);
-      lcd.setCursor(4, 1);
-      if (Ki < 10) {
-        lcd.print(" ");
-      }
-      lcd.print(Ki, 1);
-      lcd.setCursor(10, 1);
-      if (Kd < 10) {
-        lcd.print(" ");
-      }
-      lcd.print(Kd, 0);
+      lcd.setCursor(1, 0);
+      lcd_print_pad(10, Kp, 0);
+      lcd.setCursor(1, 4);
+      lcd_print_pad(10, Ki, 1);
+      lcd.setCursor(1, 10);
+      lcd_print_pad(10, Kd, 0);
       // redraw any currently-blank items, and the temperature.
       _blink_state ^= 1;  // negated by periodic();
       periodic();
@@ -267,17 +256,17 @@ class DisplayPID : public SilviaDisplay {
     virtual void release(int pin) {
       pid_controller.SetTunings(Kp, Ki, Kd);
       Serial.print(FLASH("Update EEPROM "));
-      Serial.print(*_pid_letter);
+      Serial.print(_pid_letter);
       Serial.print(FLASH(" = "));
       Serial.println(*_pid_variable);
     }
     virtual void periodic(void) {
-      lcd.setCursor(_pid_x, 0);
+      lcd.setCursor(0, _pid_x);
       _blink_state ^= 1;
       if (_blink_state) {
         lcd.print(" ");
       } else {
-        lcd.print(*_pid_letter);
+        lcd.print(_pid_letter);
       }
       display_current_temperature();
     }
@@ -290,7 +279,7 @@ class DisplayUnits : public SilviaDisplay {
     virtual void show(void) {
       lcd.clear();
       lcd.print(FLASH("Display Units"));
-      lcd.setCursor(2, 1);
+      lcd.setCursor(1, 2);
       lcd.print(FLASH("Fahrenheit"));
       periodic();
     }
@@ -319,7 +308,7 @@ class DisplayRAM : public SilviaDisplay {
       int v;
       lcd.clear();
       lcd.print(FLASH("Free RAM"));
-      lcd.setCursor(2, 1);
+      lcd.setCursor(1, 2);
       lcd.print(
         (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval)
       );
@@ -332,9 +321,9 @@ static uint8_t active_display = 0;  // Which display_panel[] is active.
 #define DISPLAY_COUNT 6
 static SilviaDisplay *display_panel[DISPLAY_COUNT] = {
   new DisplayNormal(),
-  new DisplayPID((char *)"P", &Kp),
-  new DisplayPID((char *)"I", &Ki),
-  new DisplayPID((char *)"D", &Kd),
+  new DisplayPID('P', &Kp),
+  new DisplayPID('I', &Ki),
+  new DisplayPID('D', &Kd),
   new DisplayUnits(),
   new DisplayRAM() };
 
@@ -454,14 +443,24 @@ static int update_relay(struct pt *pt) {
   PT_END(pt);
 }
 
-static void get_temperature(void) {
-  double tmp_c = thermocouple.readCelsius();
-  if (isnan(tmp_c)) {
-    // TODO: set a warning timer for check_alarm and don't always print it out
-    Serial.println("temperature is NAN!");
-    return;
+// MAX6675 needs time to settle between each poll, so only ask once per second.
+static int get_temperature(struct pt *pt) {
+  static s_timer temperature_delay;
+  double tmp_c;
+  PT_BEGIN(pt);
+  while(1) {
+    tmp_c = thermocouple.readCelsius();
+    if (isnan(tmp_c)) {
+      // TODO: set a warning timer for check_alarm and don't always print it out
+      Serial.println("temperature is NAN!");
+      enable_alarm(FLASH("NO TEMP?"));
+    } else {
+      current_temperature = (1.8 * tmp_c) + 32;
+    }
+    timer_set(&temperature_delay, 1000);
+    PT_WAIT_UNTIL(pt, timer_expired(&temperature_delay));
   }
-  current_temperature = (1.8 * tmp_c) + 32;
+  PT_END(pt);
 }
 
 static void enable_alarm(const __FlashStringHelper *msg) {
@@ -496,24 +495,27 @@ void setup() {
   Serial.begin(9600);
   pinMode(PIN_LED_BUILTIN, OUTPUT);
   pinMode(PIN_RELAY_CONTROL, OUTPUT);
-  pinMode(LCD_BR, OUTPUT);
   pinMode(PIN_BUTTON_UP, INPUT_PULLUP);
   pinMode(PIN_BUTTON_DOWN, INPUT_PULLUP);
   pinMode(PIN_BUTTON_LEFT, INPUT_PULLUP);
   pinMode(PIN_BUTTON_RIGHT, INPUT_PULLUP);
 
   digitalWrite(PIN_RELAY_CONTROL, LOW);
-  digitalWrite(LCD_BR, OUTPUT);
 
   PT_INIT(&pt_led);
+  PT_INIT(&pt_temperature);
   PT_INIT(&pt_button_watch);
   PT_INIT(&pt_update_display);
   PT_INIT(&pt_relay);
+  lcd.init();
+  lcd.clear();
 
-  lcd.begin(16, 2);  // also clears the display
+  // backlight
+  analogWrite(LCD_BG, 180);
+  analogWrite(LCD_BB, 220);
 
-  get_temperature();            // current temperature (Pv)
-  set_temperature = 224.0;      // desired temperature (Sv)
+  get_temperature(&pt_temperature);  // current temperature (Pv)
+  set_temperature = 224.0;           // desired temperature (Sv)
 
   pid_controller.SetOutputLimits(0, RELAY_PERIOD);
   pid_controller.SetMode(AUTOMATIC);
@@ -529,7 +531,7 @@ void loop() {
 
   // See if any of our protothreads have work to do.
   blink_led(&pt_led);
-  get_temperature();
+  get_temperature(&pt_temperature);
   check_alarm();
   if (active_alarm == false) {
     button_watcher(&pt_button_watch);
