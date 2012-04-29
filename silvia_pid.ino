@@ -72,14 +72,14 @@ static double pid_output = 0;
 // Tune these for how fast the boiler heats up and how slowly the water cools.
 // static double Kp = 45.0, Ki = 10, Kd = 0;
 static double Kp = 90.0, Ki = 10, Kd = 0;
-PID pid_controller(&current_temperature,
+static PID pid_controller(&current_temperature,
                    &pid_output,
                    &set_temperature,
                    Kp, Ki, Kd, DIRECT);
 
 static LCD_C0220BIZ lcd = LCD_C0220BIZ();
 
-MAX6675 thermocouple(PIN_THERM_CLK, PIN_THERM_CS, PIN_THERM_DO);
+static MAX6675 thermocouple(PIN_THERM_CLK, PIN_THERM_CS, PIN_THERM_DO);
 
 // Timer from protothreads example.
 struct s_timer { unsigned long expiration; };
@@ -92,7 +92,7 @@ static int timer_expired(const struct s_timer *t) {
   return t->expiration <= millis();
 }
 
-void toggle_led(int pin_num) {
+static void toggle_led(int pin_num) {
   boolean ledstate = digitalRead(pin_num);
   ledstate ^= 1;
   digitalWrite(pin_num, ledstate);
@@ -443,26 +443,6 @@ static int update_relay(struct pt *pt) {
   PT_END(pt);
 }
 
-// MAX6675 needs time to settle between each poll, so only ask once per second.
-static int get_temperature(struct pt *pt) {
-  static s_timer temperature_delay;
-  double tmp_c;
-  PT_BEGIN(pt);
-  while(1) {
-    tmp_c = thermocouple.readCelsius();
-    if (isnan(tmp_c)) {
-      // TODO: set a warning timer for check_alarm and don't always print it out
-      Serial.println("temperature is NAN!");
-      enable_alarm(FLASH("NO TEMP?"));
-    } else {
-      current_temperature = (1.8 * tmp_c) + 32;
-    }
-    timer_set(&temperature_delay, 1000);
-    PT_WAIT_UNTIL(pt, timer_expired(&temperature_delay));
-  }
-  PT_END(pt);
-}
-
 static void enable_alarm(const __FlashStringHelper *msg) {
   if (millis() < 5000) {
     // Only enable alarms when we have been on for five seconds.
@@ -489,6 +469,26 @@ static void check_alarm(void) {
     // Should never be this low, probe not working?
     enable_alarm(FLASH("TEMP TOO LOW"));
   }
+}
+
+// MAX6675 needs time to settle between each poll, so only ask once per second.
+static int get_temperature(struct pt *pt) {
+  static s_timer temperature_delay;
+  double tmp_c;
+  PT_BEGIN(pt);
+  while(1) {
+    tmp_c = thermocouple.readCelsius();
+    if (isnan(tmp_c)) {
+      // TODO: set a warning timer for check_alarm and don't always print it out
+      Serial.println("temperature is NAN!");
+      enable_alarm(FLASH("NO TEMP?"));
+    } else {
+      current_temperature = (1.8 * tmp_c) + 32;
+    }
+    timer_set(&temperature_delay, 1000);
+    PT_WAIT_UNTIL(pt, timer_expired(&temperature_delay));
+  }
+  PT_END(pt);
 }
 
 void setup() {
