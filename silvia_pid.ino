@@ -40,6 +40,12 @@
 #define LCD_BG PIN_B6
 #define LCD_BB PIN_B5
 
+// Our enclosure obstructs the left character on the LCD, so indent two chars.
+// Used when left justifying any setCursor calls.
+#define FIX_X 2
+// Current LCD has 20 chars, helpful to know when right justifying text.
+#define LCD_WIDTH 20
+
 #define PIN_BUTTON_UP PIN_C7
 #define PIN_BUTTON_DOWN PIN_C6
 #define PIN_BUTTON_LEFT PIN_D3
@@ -51,13 +57,6 @@
 
 #define MIN_SET_TEMP 150
 #define MAX_SET_TEMP 300
-
-// Our protothreads.
-static struct pt pt_led;
-static struct pt pt_temperature;
-static struct pt pt_button_watch;
-static struct pt pt_update_display;
-static struct pt pt_relay;
 
 static boolean active_alarm = false;
 static uint8_t active_button = 0;  // set by button_watcher()->button_pressed()
@@ -82,14 +81,15 @@ static LCD_C0220BIZ lcd = LCD_C0220BIZ();
 static MAX6675 thermocouple(PIN_THERM_CLK, PIN_THERM_CS, PIN_THERM_DO);
 
 // Timer from protothreads example.
-struct s_timer { unsigned long expiration; };
+struct s_timer { long expiration; };
 
 static void timer_set(struct s_timer *t, int interval) {
-  t->expiration = millis() + interval;
+  // Use signed math with expiration to avoid millis rollover issues.
+  t->expiration = (long)millis() + interval;
 }
 
 static int timer_expired(const struct s_timer *t) {
-  return t->expiration <= millis();
+  return ((long)millis() - t->expiration) >= 0;
 }
 
 static void toggle_led(int pin_num) {
@@ -98,15 +98,16 @@ static void toggle_led(int pin_num) {
   digitalWrite(pin_num, ledstate);
 }
 
-static int blink_led(struct pt *pt) {
+static int blink_led(void) {
+  static pt pt;
   static s_timer led_timer;
-  PT_BEGIN(pt);
+  PT_BEGIN(&pt);
   while(1) {
     timer_set(&led_timer, 1000);
-    PT_WAIT_UNTIL(pt, timer_expired(&led_timer));
+    PT_WAIT_UNTIL(&pt, timer_expired(&led_timer));
     toggle_led(PIN_LED_BUILTIN);
   }
-  PT_END(pt);
+  PT_END(&pt);
 }
 
 // Return the pin number of the first button pressed down that we see.
@@ -131,7 +132,7 @@ static int button_pressed(void) {
 }
 
 static void display_set_temperature(void) {
-  lcd.setCursor(1, 0);
+  lcd.setCursor(1, 0 + FIX_X);
   lcd.print(set_temperature, 0);
   lcd.print("F");
 }
@@ -144,7 +145,7 @@ static void lcd_print_pad(uint8_t lt, double value, uint8_t precision) {
 }
 
 static void display_current_temperature(void) {
-  lcd.setCursor(1, 20 - 4);
+  lcd.setCursor(1, LCD_WIDTH - 4);
   lcd_print_pad(100, current_temperature, 0);  // round to whole degree
   lcd.print("F");
 }
@@ -165,6 +166,7 @@ class DisplayNormal : public SilviaDisplay {
     }
     virtual void show(void) {
       lcd.clear();
+      lcd.setCursor(0, 0 + FIX_X);
       lcd.print(FLASH("Miss Silvia"));
       display_set_temperature();
       periodic();  // this is just to show the current temperature
@@ -220,14 +222,15 @@ class DisplayPID : public SilviaDisplay {
     }
     void refresh_pid(void) {
       lcd.clear();
+      lcd.setCursor(0, 0 + FIX_X);
       lcd.print(FLASH(" P    I    D"));
 //                    "90  10.5   0"
 //                     012345678901
-      lcd.setCursor(1, 0);
+      lcd.setCursor(1, 0 + FIX_X);
       lcd_print_pad(10, Kp, 0);
-      lcd.setCursor(1, 4);
+      lcd.setCursor(1, 4 + FIX_X);
       lcd_print_pad(10, Ki, 1);
-      lcd.setCursor(1, 10);
+      lcd.setCursor(1, 10 + FIX_X);
       lcd_print_pad(10, Kd, 0);
       // redraw any currently-blank items, and the temperature.
       _blink_state ^= 1;  // negated by periodic();
@@ -261,7 +264,7 @@ class DisplayPID : public SilviaDisplay {
       Serial.println(*_pid_variable);
     }
     virtual void periodic(void) {
-      lcd.setCursor(0, _pid_x);
+      lcd.setCursor(0, _pid_x + FIX_X);
       _blink_state ^= 1;
       if (_blink_state) {
         lcd.print(" ");
@@ -278,8 +281,9 @@ class DisplayUnits : public SilviaDisplay {
     }
     virtual void show(void) {
       lcd.clear();
+      lcd.setCursor(0, 0 + FIX_X);
       lcd.print(FLASH("Display Units"));
-      lcd.setCursor(1, 2);
+      lcd.setCursor(1, 2 + FIX_X);
       lcd.print(FLASH("Fahrenheit"));
       periodic();
     }
@@ -307,8 +311,9 @@ class DisplayRAM : public SilviaDisplay {
       extern int __heap_start, *__brkval;
       int v;
       lcd.clear();
+      lcd.setCursor(0, 0 + FIX_X);
       lcd.print(FLASH("Free RAM"));
-      lcd.setCursor(1, 2);
+      lcd.setCursor(1, 2 + FIX_X);
       lcd.print(
         (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval)
       );
@@ -330,14 +335,15 @@ static SilviaDisplay *display_panel[DISPLAY_COUNT] = {
 // Each display mode gets called periodically so it can blink text
 // or update the temperature display.
 static s_timer display_refresh_timer;  // NOTE: Also reset by change_display();
-static int update_display(struct pt *pt) {
-  PT_BEGIN(pt);
+static int update_display(void) {
+  static pt pt;
+  PT_BEGIN(&pt);
   while (1) {
     timer_set(&display_refresh_timer, 1000);
-    PT_WAIT_UNTIL(pt, timer_expired(&display_refresh_timer));
+    PT_WAIT_UNTIL(&pt, timer_expired(&display_refresh_timer));
     display_panel[active_display]->periodic();
   }
-  PT_END(pt);
+  PT_END(&pt);
 }
 
 // left/right buttons are hit to switch between different display modes
@@ -363,18 +369,19 @@ static void change_display(int pin, int button_down_ms) {
 }
 
 // This logic ended up looking much more complicated than I imagined!
-static int button_watcher(struct pt *pt) {
+static int button_watcher(void) {
+  static pt pt;
   static s_timer button_timer;
   static unsigned long button_down_ms;
-  PT_BEGIN(pt);
+  PT_BEGIN(&pt);
   while(1) {
     button_down_ms = 0;
-    PT_WAIT_UNTIL(pt, button_pressed());
+    PT_WAIT_UNTIL(&pt, button_pressed());
     Serial.print(FLASH("button "));
     Serial.println(active_button);
     // debounce press
     timer_set(&button_timer, 10);
-    PT_WAIT_UNTIL(pt, timer_expired(&button_timer));
+    PT_WAIT_UNTIL(&pt, timer_expired(&button_timer));
     while(digitalRead(active_button) == LOW) {
       if (button_down_ms % 100 == 0) {
         // this will fire the initial '0ms' and then every 100ms after
@@ -386,7 +393,7 @@ static int button_watcher(struct pt *pt) {
         }
       }
       timer_set(&button_timer, 10);
-      PT_WAIT_UNTIL(pt, timer_expired(&button_timer));
+      PT_WAIT_UNTIL(&pt, timer_expired(&button_timer));
       button_down_ms += 10;
     }
     if (active_button == PIN_BUTTON_LEFT ||
@@ -397,9 +404,9 @@ static int button_watcher(struct pt *pt) {
     }
     // debounce release
     timer_set(&button_timer, 10);
-    PT_WAIT_UNTIL(pt, timer_expired(&button_timer));
+    PT_WAIT_UNTIL(&pt, timer_expired(&button_timer));
   }
-  PT_END(pt);
+  PT_END(&pt);
 }
 
 static int filter_pid_output(int duty_cycle) {
@@ -419,10 +426,11 @@ static int filter_pid_output(int duty_cycle) {
   }
 }
 
-static int update_relay(struct pt *pt) {
+static int update_relay(void) {
+  static pt pt;
   static s_timer relay_timer;
   static int pid_duty_cycle;
-  PT_BEGIN(pt);
+  PT_BEGIN(&pt);
   while (1) {
     pid_duty_cycle = filter_pid_output((int)pid_output);
     if(pid_duty_cycle > 0) {
@@ -430,20 +438,21 @@ static int update_relay(struct pt *pt) {
       Serial.print(FLASH("RELAY ON "));
       Serial.println(pid_duty_cycle);
       timer_set(&relay_timer, pid_duty_cycle);
-      PT_WAIT_UNTIL(pt, timer_expired(&relay_timer));
+      PT_WAIT_UNTIL(&pt, timer_expired(&relay_timer));
     }
     if (RELAY_PERIOD - pid_duty_cycle > 0) {
       digitalWrite(PIN_RELAY_CONTROL, LOW);
       Serial.print(FLASH("RELAY OFF "));
       Serial.println(RELAY_PERIOD - pid_duty_cycle);
       timer_set(&relay_timer, RELAY_PERIOD - pid_duty_cycle);
-      PT_WAIT_UNTIL(pt, timer_expired(&relay_timer));
+      PT_WAIT_UNTIL(&pt, timer_expired(&relay_timer));
     }
   }
-  PT_END(pt);
+  PT_END(&pt);
 }
 
-static void enable_alarm(const __FlashStringHelper *msg) {
+static void enable_alarm(const __FlashStringHelper *msg1,
+                         const __FlashStringHelper *msg2) {
   if (millis() < 5000) {
     // Only enable alarms when we have been on for five seconds.
     // TODO: Remove if check_alarm() gets smarter.
@@ -452,10 +461,17 @@ static void enable_alarm(const __FlashStringHelper *msg) {
   active_alarm = true;
   digitalWrite(PIN_RELAY_CONTROL, LOW);  // disable solid state relay
   lcd.clear();
-  lcd.print(msg);
+  lcd.setCursor(0, LCD_WIDTH - 5);
+  lcd.print(FLASH("ERROR"));
+  lcd.setCursor(0, 0 + FIX_X);
+  lcd.print(msg1);
+  lcd.setCursor(1, 0 + FIX_X);
+  lcd.print(msg2);
   display_current_temperature();
-  Serial.print("ALARM: ");
-  Serial.println(msg);
+  Serial.print(FLASH("ALARM: "));
+  Serial.print(msg1);
+  Serial.print(FLASH(" "));
+  Serial.println(msg2);
 }
 
 static void check_alarm(void) {
@@ -464,31 +480,34 @@ static void check_alarm(void) {
     display_current_temperature();
   } else if (current_temperature >= 300) {
     // TODO: Verify steam temperature.
-    enable_alarm(FLASH("TEMP TOO HOT"));
+    enable_alarm(FLASH("Temp is"), FLASH("too high"));
   } else if (current_temperature < 40) {
     // Should never be this low, probe not working?
-    enable_alarm(FLASH("TEMP TOO LOW"));
+    enable_alarm(FLASH("Temp is"), FLASH("too low"));
   }
 }
 
 // MAX6675 needs time to settle between each poll, so only ask once per second.
-static int get_temperature(struct pt *pt) {
+static int get_temperature(void) {
+  static pt pt;
   static s_timer temperature_delay;
   double tmp_c;
-  PT_BEGIN(pt);
+  PT_BEGIN(&pt);
   while(1) {
     tmp_c = thermocouple.readCelsius();
     if (isnan(tmp_c)) {
       // TODO: set a warning timer for check_alarm and don't always print it out
       Serial.println("temperature is NAN!");
-      enable_alarm(FLASH("NO TEMP?"));
+      // There may already be an alarm active -- this will override it.
+      enable_alarm(FLASH("Temp probe"), FLASH("not found"));
     } else {
       current_temperature = (1.8 * tmp_c) + 32;
+      current_temperature = min(999, current_temperature);
     }
     timer_set(&temperature_delay, 1000);
-    PT_WAIT_UNTIL(pt, timer_expired(&temperature_delay));
+    PT_WAIT_UNTIL(&pt, timer_expired(&temperature_delay));
   }
-  PT_END(pt);
+  PT_END(&pt);
 }
 
 void setup() {
@@ -502,11 +521,6 @@ void setup() {
 
   digitalWrite(PIN_RELAY_CONTROL, LOW);
 
-  PT_INIT(&pt_led);
-  PT_INIT(&pt_temperature);
-  PT_INIT(&pt_button_watch);
-  PT_INIT(&pt_update_display);
-  PT_INIT(&pt_relay);
   lcd.init();
   lcd.clear();
 
@@ -514,7 +528,7 @@ void setup() {
   analogWrite(LCD_BG, 180);
   analogWrite(LCD_BB, 220);
 
-  get_temperature(&pt_temperature);  // current temperature (Pv)
+  get_temperature();                 // current temperature (Pv)
   set_temperature = 224.0;           // desired temperature (Sv)
 
   pid_controller.SetOutputLimits(0, RELAY_PERIOD);
@@ -530,15 +544,15 @@ void loop() {
   wdt_reset();  // Reset watchdog timer.
 
   // See if any of our protothreads have work to do.
-  blink_led(&pt_led);
-  get_temperature(&pt_temperature);
+  blink_led();
+  get_temperature();
   check_alarm();
   if (active_alarm == false) {
-    button_watcher(&pt_button_watch);
-    update_display(&pt_update_display);
+    button_watcher();
+    update_display();
 
     pid_controller.Compute();
-    update_relay(&pt_relay);
+    update_relay();
   }
   // TODO: sleep microcontroller for 10ms
 }
