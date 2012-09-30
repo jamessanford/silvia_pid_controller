@@ -30,7 +30,7 @@
 #define FLASH(__s) F(__s)
 
 // For testing, consider using 1000ms increments instead of 10000ms.
-#define RELAY_PERIOD 10000
+#define RELAY_PERIOD 5000
 
 #define PIN_LED_BUILTIN PIN_D6
 #define PIN_RELAY_CONTROL PIN_F0
@@ -40,11 +40,11 @@
 #define LCD_BG PIN_B6
 #define LCD_BB PIN_B5
 
-// Our enclosure obstructs the left character on the LCD, so indent two chars.
+// The box obstructs the leftmost character on the LCD, so indent by two chars.
 // Used when left justifying any setCursor calls.
 #define FIX_X 2
 // Current LCD has 20 chars, helpful to know when right justifying text.
-#define LCD_WIDTH 20
+#define LCD_TOTAL_COLUMNS 20
 
 #define PIN_BUTTON_UP PIN_C7
 #define PIN_BUTTON_DOWN PIN_C6
@@ -145,7 +145,7 @@ static void lcd_print_pad(uint8_t lt, double value, uint8_t precision) {
 }
 
 static void display_current_temperature(void) {
-  lcd.setCursor(1, LCD_WIDTH - 4);
+  lcd.setCursor(1, LCD_TOTAL_COLUMNS - 4);
   lcd_print_pad(100, current_temperature, 0);  // round to whole degree
   lcd.print("F");
 }
@@ -461,7 +461,7 @@ static void enable_alarm(const __FlashStringHelper *msg1,
   active_alarm = true;
   digitalWrite(PIN_RELAY_CONTROL, LOW);  // disable solid state relay
   lcd.clear();
-  lcd.setCursor(0, LCD_WIDTH - 5);
+  lcd.setCursor(0, LCD_TOTAL_COLUMNS - 5);
   lcd.print(FLASH("ERROR"));
   lcd.setCursor(0, 0 + FIX_X);
   lcd.print(msg1);
