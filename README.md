@@ -1,4 +1,4 @@
-###Arduino-based PID controller for Rancilio Silvia boiler temperature.
+### Arduino-based PID controller for Rancilio Silvia boiler temperature.
 
 Maintain stable boiler temperature by reading the temp from a MAX6675
 thermocouple amplifier and switching a solid state relay on/off.
